@@ -37,7 +37,6 @@ Trimmomatic -> Picard MarkDuplicates -> BWA-MEM alignment to reference -> samtoo
 
 ### Quick start one command
 ```bash
-export NCBI_EMAIL="you@example.com"
 conda env create -f env/environment.yml
 conda activate rsv-env
 snakemake -s workflow/Snakefile -c 4 --printshellcmds
