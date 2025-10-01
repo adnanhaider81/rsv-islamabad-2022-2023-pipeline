@@ -1,0 +1,318 @@
+# Snakemake workflow that autodetects samples in a folder
+# No external fetching. References must be provided by the user.
+# Run:
+#   conda env create -f env/environment.yml
+#   conda activate rsv-env
+#   export NCBI_EMAIL="you@example.com"  # only needed for Biopython scripts if used elsewhere
+#   snakemake -s workflow/Snakefile -c 4 --configfile config/config.yaml --printshellcmds
+
+import os
+from pathlib import Path
+
+FASTQ_DIR = config.get("fastq_dir", "fastq")
+R1_SUFFIX = config.get("r1_suffix", "_R1.fastq.gz")
+R2_SUFFIX = config.get("r2_suffix", "_R2.fastq.gz")
+
+REFS = config["refs"]  # dict with keys A and B
+ASSIGN = config["assignment"]
+THREADS = int(config["params"]["threads"])
+MIN_DEPTH = int(config["params"]["min_depth_consensus"])
+MIN_QUAL = int(config["params"]["min_qual"])
+ADAPTERS = config["params"]["adapters"]
+
+# Discover samples by R1 files
+r1_glob = os.path.join(FASTQ_DIR, "{" + "sample" + "}" + R1_SUFFIX)
+SAMPLES = sorted(glob_wildcards(r1_glob).sample)
+
+# Optional: filter to those that have matching R2
+def has_r2(sample):
+    return Path(os.path.join(FASTQ_DIR, sample + R2_SUFFIX)).exists()
+
+SAMPLES = [s for s in SAMPLES if has_r2(s)]
+
+# Determine subtype for each sample based on assignment mode
+def parse_mapfile(path):
+    d = {}
+    if not Path(path).exists():
+        return d
+    with open(path) as fh:
+        # skip header if present
+        for line in fh:
+            if not line.strip():
+                continue
+            parts = line.rstrip("\n").split("\t")
+            if parts[0].lower() == "sample":
+                continue
+            if len(parts) < 2:
+                continue
+            d[parts[0]] = parts[1]
+    return d
+
+TOKENS = ASSIGN.get("auto_tokens", {"A": [], "B": []})
+MAP = parse_mapfile(ASSIGN.get("map_file", "config/samples.tsv"))
+MODE = ASSIGN.get("mode", "auto")
+SAMPLE_TO_SUBTYPE = {}
+
+for s in SAMPLES:
+    subtype = None
+    if MODE == "single":
+        subtype = ASSIGN.get("single_subtype", "A")
+    elif MODE == "map":
+        subtype = MAP.get(s, None)
+    elif MODE == "auto":
+        s_upper = s.upper()
+        # prefer explicit tokens then fallback to simple pattern detection
+        if any(tok.upper() in s_upper for tok in TOKENS.get("A", [])):
+            subtype = "A"
+        elif any(tok.upper() in s_upper for tok in TOKENS.get("B", [])):
+            subtype = "B"
+        else:
+            # try simple heuristic: endswith _A or _B parts
+            if s_upper.endswith("_A") or "_A_" in s_upper:
+                subtype = "A"
+            elif s_upper.endswith("_B") or "_B_" in s_upper:
+                subtype = "B"
+            else:
+                # default to A if unknown
+                subtype = "A"
+    else:
+        subtype = "A"
+    if subtype not in ("A", "B"):
+        raise ValueError(f"Subtype must be A or B for sample {s}, got {subtype}")
+    SAMPLE_TO_SUBTYPE[s] = subtype
+
+# Prepare references: copy user provided fasta into a local build folder and index
+SUBTYPES = sorted(set(SAMPLE_TO_SUBTYPE.values()))
+
+rule all:
+    input:
+        expand("results/consensus/{sample}.consensus.fasta", sample=SAMPLES),
+        "results/consensus/all_consensus.fasta",
+        "results/qc/multiqc_report.html"
+
+localrules: validate_inputs
+
+rule validate_inputs:
+    input:
+        # Exists check only
+        refs = [REFS[st] for st in SUBTYPES]
+    output:
+        touch("config/.validated")
+    run:
+        # Ensure provided references exist
+        for p in input.refs:
+            if not Path(p).exists():
+                raise FileNotFoundError(f"Reference file missing: {p}")
+
+rule prepare_reference:
+    input:
+        src = lambda wc: REFS[wc.subtype]
+    output:
+        dst = "refs/build/{subtype}.fasta"
+    shell:
+        r"""
+        mkdir -p refs/build
+        cp {input.src} {output.dst}
+        """
+
+rule index_reference:
+    input:
+        fasta = "refs/build/{subtype}.fasta"
+    output:
+        faidx = "refs/build/{subtype}.fasta.fai",
+        dict = "refs/build/{subtype}.dict",
+        bwt = "refs/build/{subtype}.fasta.bwt"
+    threads: 1
+    shell:
+        r"""
+        samtools faidx {input.fasta}
+        picard CreateSequenceDictionary R={input.fasta} O={output.dict}
+        bwa index {input.fasta}
+        """
+
+def ref_build_for_sample(wc):
+    subtype = SAMPLE_TO_SUBTYPE[wc.sample]
+    return f"refs/build/{subtype}.fasta"
+
+rule fastqc:
+    input:
+        r1 = lambda wc: os.path.join(FASTQ_DIR, wc.sample + R1_SUFFIX),
+        r2 = lambda wc: os.path.join(FASTQ_DIR, wc.sample + R2_SUFFIX)
+    output:
+        html1 = "results/qc/{sample}_R1_fastqc.html",
+        html2 = "results/qc/{sample}_R2_fastqc.html"
+    threads: THREADS
+    shell:
+        r"""
+        mkdir -p results/qc
+        fastqc -t {threads} -o results/qc {input.r1} {input.r2}
+        """
+
+rule trim:
+    input:
+        r1 = lambda wc: os.path.join(FASTQ_DIR, wc.sample + R1_SUFFIX),
+        r2 = lambda wc: os.path.join(FASTQ_DIR, wc.sample + R2_SUFFIX)
+    output:
+        r1 = "results/trim/{sample}_R1.trim.fastq.gz",
+        r1u = "results/trim/{sample}_R1.unpaired.fastq.gz",
+        r2 = "results/trim/{sample}_R2.trim.fastq.gz",
+        r2u = "results/trim/{sample}_R2.unpaired.fastq.gz"
+    threads: THREADS
+    params:
+        adapters = ADAPTERS
+    shell:
+        r"""
+        mkdir -p results/trim
+        trimmomatic PE -threads {threads} \
+          {input.r1} {input.r2} \
+          {output.r1} {output.r1u} \
+          {output.r2} {output.r2u} \
+          ILLUMINACLIP:{params.adapters}:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:20 MINLEN:50
+        """
+
+rule map_and_sort:
+    input:
+        r1 = "results/trim/{sample}_R1.trim.fastq.gz",
+        r2 = "results/trim/{sample}_R2.trim.fastq.gz",
+        ref = ref_build_for_sample
+    output:
+        bam = "results/bam/{sample}.sorted.bam"
+    threads: THREADS
+    params:
+        ref = ref_build_for_sample
+    shell:
+        r"""
+        mkdir -p results/bam
+        bwa mem -t {threads} {params.ref} {input.r1} {input.r2} | samtools sort -@ {threads} -o {output.bam}
+        """
+
+rule mark_duplicates:
+    input:
+        bam = "results/bam/{sample}.sorted.bam"
+    output:
+        bam = "results/bam/{sample}.dedup.bam",
+        metrics = "results/bam/{sample}.dupmetrics.txt"
+    threads: 1
+    shell:
+        r"""
+        picard MarkDuplicates I={input.bam} O={output.bam} M={output.metrics} REMOVE_DUPLICATES=true
+        samtools index {output.bam}
+        """
+
+rule depth:
+    input:
+        bam = "results/bam/{sample}.dedup.bam"
+    output:
+        depth = "results/depth/{sample}.depth.txt"
+    threads: 1
+    shell:
+        r"""
+        mkdir -p results/depth
+        samtools depth -a {input.bam} > {output.depth}
+        """
+
+rule mask_bed:
+    input:
+        depth = "results/depth/{sample}.depth.txt"
+    output:
+        bed = "results/mask/{sample}.mask.bed"
+    params:
+        min_depth = MIN_DEPTH
+    shell:
+        r"""
+        mkdir -p results/mask
+        awk -v min={params.min_depth} 'BEGIN{{OFS="\t"}} {{if($3<min) print $1,$2-1,$2}}' {input.depth} > {output.bed}
+        """
+
+rule call_variants:
+    input:
+        bam = "results/bam/{sample}.dedup.bam",
+        ref = ref_build_for_sample
+    output:
+        vcf = "results/vcf/{sample}.vcf.gz",
+        tbi = "results/vcf/{sample}.vcf.gz.tbi"
+    threads: THREADS
+    params:
+        min_qual = MIN_QUAL
+    shell:
+        r"""
+        mkdir -p results/vcf
+        bcftools mpileup -f {input.ref} -Q {params.min_qual} -Ou {input.bam} \
+          | bcftools call -mv -Oz -o {output.vcf}
+        bcftools index {output.vcf}
+        """
+
+rule consensus:
+    input:
+        ref = ref_build_for_sample,
+        vcf = "results/vcf/{sample}.vcf.gz",
+        bed = "results/mask/{sample}.mask.bed"
+    output:
+        fa = "results/consensus/{sample}.consensus.fasta"
+    shell:
+        r"""
+        mkdir -p results/consensus
+        bcftools consensus -m {input.bed} -f {input.ref} {input.vcf} > {output.fa}
+        """
+
+rule combine_consensus:
+    input:
+        expand("results/consensus/{sample}.consensus.fasta", sample=SAMPLES)
+    output:
+        "results/consensus/all_consensus.fasta"
+    shell:
+        r"""
+        cat {input} > {output}
+        """
+
+rule multiqc:
+    input:
+        expand("results/qc/{sample}_R1_fastqc.html", sample=SAMPLES),
+        expand("results/qc/{sample}_R2_fastqc.html", sample=SAMPLES)
+    output:
+        "results/qc/multiqc_report.html"
+    shell:
+        r"""
+        multiqc -o results/qc results/qc
+        """
+
+# Optional tree building if user provides context fasta
+CONTEXT_FASTA = config.get("tree", {}).get("context_fasta", "")
+if CONTEXT_FASTA:
+    rule make_alignment_input:
+        input:
+            "results/consensus/all_consensus.fasta",
+            CONTEXT_FASTA
+        output:
+            "results/aln/combined.fasta"
+        shell:
+            r"""
+            mkdir -p results/aln
+            cat {input} > {output}
+            """
+
+    rule mafft_align:
+        input:
+            "results/aln/combined.fasta"
+        output:
+            "results/aln/combined.aln.fasta"
+        threads: THREADS
+        shell:
+            r"""
+            mafft --auto {input} > {output}
+            """
+
+    rule iqtree:
+        input:
+            "results/aln/combined.aln.fasta"
+        output:
+            tree = "results/iqtree/rsv_tree.treefile"
+        params:
+            model = config.get("tree", {}).get("model", "GTR+G"),
+            bootstrap = int(config.get("tree", {}).get("bootstrap", 1000))
+        threads: THREADS
+        shell:
+            r"""
+            mkdir -p results/iqtree
+            iqtree2 -s {input} -m {params.model} -bb {params.bootstrap} -nt AUTO -pre results/iqtree/rsv_tree
+            """

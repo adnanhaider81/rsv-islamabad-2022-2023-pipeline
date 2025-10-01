@@ -1,0 +1,37 @@
+# Folder that contains your FASTQ files
+fastq_dir: fastq
+
+# Read suffixes
+r1_suffix: "_R1.fastq.gz"
+r2_suffix: "_R2.fastq.gz"
+
+# User provided reference genomes
+# Place files at these paths before running
+refs:
+  A: refs/RSV_A.fasta
+  B: refs/RSV_B.fasta
+
+# How to assign reference to samples
+assignment:
+  # modes: single, auto, map
+  mode: "auto"
+  # Used in single mode
+  single_subtype: "A"
+  # Used in map mode; TSV with two columns: sample<TAB>subtype
+  map_file: "config/samples.tsv"
+  # Used in auto mode; if any token is found in the sample name, that subtype is chosen
+  auto_tokens:
+    A: ["_A_", "-A-", "RSV-A", "subtypeA", "_subA_"]
+    B: ["_B_", "-B-", "RSV-B", "subtypeB", "_subB_"]
+
+params:
+  threads: 4
+  min_depth_consensus: 10
+  min_qual: 20
+  adapters: "$CONDA_PREFIX/share/trimmomatic/adapters/NexteraPE-PE.fa"
+
+tree:
+  # Provide a manually curated context fasta to enable alignment and tree build
+  context_fasta: ""
+  model: "GTR+G"
+  bootstrap: 1000

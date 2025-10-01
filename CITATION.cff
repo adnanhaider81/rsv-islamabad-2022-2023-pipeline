@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+title: "RSV Islamabad 2022 to 2023 analysis pipeline"
+message: "If you use this pipeline, please cite the paper and this repository."
+type: software
+authors:
+  - family-names: "Haider"
+    given-names: "Syed Adnan"
+  - family-names: "Jamal"
+    given-names: "Zunera"
+  - family-names: "Tahir"
+    given-names: "Faheem"
+  - family-names: "Salman"
+    given-names: "Muhammad"
+  - family-names: "Umair"
+    given-names: "Massab"
+repository-code: "https://github.com/your-org/your-repo"
+identifiers:
+  - type: doi
+    value: 10.1007/s00705-024-06036-0
+license: MIT

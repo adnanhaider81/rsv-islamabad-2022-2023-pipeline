@@ -1,0 +1,26 @@
+fastq_dir: tests/data/fastq
+r1_suffix: "_R1.fastq.gz"
+r2_suffix: "_R2.fastq.gz"
+
+refs:
+  A: tests/data/refs/test_A.fasta
+  B: tests/data/refs/test_B.fasta
+
+assignment:
+  mode: "single"
+  single_subtype: "A"
+  map_file: "config/samples.tsv"
+  auto_tokens:
+    A: []
+    B: []
+
+params:
+  threads: 2
+  min_depth_consensus: 1
+  min_qual: 13
+  adapters: "$CONDA_PREFIX/share/trimmomatic/adapters/NexteraPE-PE.fa"
+
+tree:
+  context_fasta: ""
+  model: "GTR+G"
+  bootstrap: 10
