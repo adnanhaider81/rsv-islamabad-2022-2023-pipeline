@@ -12,10 +12,8 @@ End to end analysis for RSV-A and RSV-B. Steps are automated where useful and do
 - Library prep: Nextera DNA Flex or Nextera XT. Follow vendor instructions for dual indexed libraries.
 - Platform: Illumina MiSeq, 2x150 bp. Use a run configuration that yields enough depth per sample for whole genome consensus. The original study used MiSeq and short paired end reads; 2x150 works well in this pipeline.
 
-## CoVpipe2-inspired short read path
-Minimal, explicit path that mirrors CoVpipe2 style. This is the reference based consensus path for each sample.
-
-Trimmomatic -> Picard MarkDuplicates -> BWA-MEM alignment to reference -> samtools sort and index -> bcftools mpileup and call -> masked consensus
+## Workflow
+FASTQC -> Trimmomatic -> Picard MarkDuplicates -> BWA-MEM alignment to reference -> samtools sort and index -> bcftools mpileup and call -> masked consensus
 
 ### Requirements
 - FastQC v0.11.9
