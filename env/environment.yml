@@ -14,5 +14,4 @@ dependencies:
   - picard>=3.0
   - mafft>=7.520
   - iqtree=2.2.0
-  - biopython>=1.83
   - multiqc>=1.15

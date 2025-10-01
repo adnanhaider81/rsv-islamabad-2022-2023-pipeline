@@ -1,192 +1,83 @@
 # Genomic characterization of human respiratory syncytial virus circulating in Islamabad, Pakistan, during an outbreak in 2022 to 2023
 
-Reproducible workflow that mirrors the analysis in the study, with an explicit CoVpipe2-inspired short read pipeline and clear manual steps for annotation and tree building.
-
+Reproducible code and workflow that mirrors the analysis in the paper.  
 DOI: https://doi.org/10.1007/s00705-024-06036-0
 
 ## Program summary
-End to end analysis for RSV-A and RSV-B. Steps are automated where useful and documented for manual replication when a GUI is simpler or when external resources are required.
+End to end analysis for RSV-A and RSV-B as in the study. All steps are automated or scripted and documented here so a reviewer can reproduce the flow without guesswork.
 
-## Wet lab and sequencing context
-- Input: throat or nasopharyngeal swabs collected in VTM from RSV positive patients.
-- Library prep: Nextera DNA Flex or Nextera XT. Follow vendor instructions for dual indexed libraries.
-- Platform: Illumina MiSeq, 2x150 bp. Use a run configuration that yields enough depth per sample for whole genome consensus. The original study used MiSeq and short paired end reads; 2x150 works well in this pipeline.
+1) Inputs
+   - Paired-end FASTQ files from RSV-positive samples.
 
-## Workflow
-Trimmomatic -> Picard MarkDuplicates -> BWA-MEM alignment to reference -> samtools sort and index -> bcftools mpileup and call -> masked consensus
+2) Quality control and trimming
+   - FastQC for initial QC.
+   - Trimmomatic for adapter and quality trimming.
 
-### Requirements
-- FastQC v0.11.9
-- Trimmomatic v0.39
-- bwa, samtools, bcftools
-- Picard
-- Python 3.11+
-- Optional: Snakemake, Conda, Docker
+3) Reference-based assembly and masked consensus
+   - Fetch RSV-A NC_038235.1 or RSV-B NC_001781.1 by accession.
+   - Index references with BWA, samtools, Picard.
+   - Map reads with BWA-MEM, sort, mark duplicates.
+   - Compute depth and mask low coverage positions to N using a user-set threshold default 10.
+   - Call variants with bcftools and generate a masked consensus with bcftools consensus.
 
-### References for mapping
-- RSV-A: NC_038235.1
-- RSV-B: NC_001781.1
+4) De novo assembly and contig validation
+   - Assemble with SPAdes.
+   - Contig QC: length, percent Ns, GC, N50. Expect a principal contig near 15.2 kb.
+   - Identify closest matches using BLAST remote against NCBI nt.
+   - Fetch selected GenBank sequences for context.
 
-### Quick start one command
+5) Multiple sequence alignment and phylogeny
+   - MAFFT alignment of your consensus plus context sequences.
+   - IQ-TREE with configurable model. Use GTR+G for strict parity with the paper or MFP to enable ModelFinder automatic model selection.
+   - 1000 ultrafast bootstraps by default. SH-aLRT can be enabled if required.
+
+6) Clade and genotype assignment
+   - Nextclade datasets for RSV-A and RSV-B to assign genotypes and clades.
+
+7) Mutational analysis
+   - Amino acid differences in G and F compared to RSV-A NC_038235.1 or RSV-B NC_001781.1. Results exported as TSV.
+
+8) Outputs
+   - Per sample consensus: results/consensus/<sample>.fa
+   - Combined consensus: results/consensus/all_consensus.fasta
+   - Alignment: results/aln/consensus_alignment.fasta
+   - Maximum likelihood tree: results/iqtree/consensus.treefile
+   - QC tables and mutation reports under results/
+
+9) Repro and compliance
+   - CITATION.cff, MIT LICENSE, CI check for quick verification.
+
+## Requirements
+- Python 3.11 or newer
+- Option A: pip and virtualenv
+- Option B: conda or mamba
+- Snakemake if you want to run the full pipeline
+- Optional: Docker
+
+### NCBI usage note
+Set a contact email once per shell for E-utilities steps. Optional API key improves rate limits.
 ```bash
-export NCBI_EMAIL="you@example.com"
+export NCBI_API_KEY="xxxxxxxxxxxxxxxxxxxxxxxxxxxx"   # optional
+```
+
+## Quick verification
+This confirms the repo executes locally and produces an image.
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+python -m pip install -r env/requirements.txt
+python analysis/scripts/example_qc_plot.py --in data-example/example_counts.tsv --out results-example/example_plot.png
+```
+
+## One-command end to end run
+```bash
 conda env create -f env/environment.yml
 conda activate rsv-env
 snakemake -s workflow/Snakefile -c 4 --printshellcmds
 ```
 
-### Manual pipeline for a single sample
-Assume these variables:
-```bash
-SAMPLE="RSV_A_001"
-SUBTYPE="A"     # A or B
-R1="data-private/${SAMPLE}_R1.fastq.gz"
-R2="data-private/${SAMPLE}_R2.fastq.gz"
-
-# Adapter file for Nextera
-ADAPTERS="env/NexteraPE-PE.fa"
-
-# Reference by subtype
-REF_A="refs/NC_038235.1.fasta"
-REF_B="refs/NC_001781.1.fasta"
-REF=$( [ "$SUBTYPE" = "A" ] && echo "$REF_A" || echo "$REF_B" )
-
-MIN_DEPTH=10
-MIN_QUAL=20
-OUTDIR="results/${SAMPLE}"
-mkdir -p "$OUTDIR"
-```
-
-1) Quality control and trimming
-```bash
-fastqc -o "$OUTDIR" "$R1" "$R2"
-
-trimmomatic PE -threads 4   "$R1" "$R2"   "$OUTDIR/${SAMPLE}_R1.trim.fastq.gz" "$OUTDIR/${SAMPLE}_R1.unpaired.fastq.gz"   "$OUTDIR/${SAMPLE}_R2.trim.fastq.gz" "$OUTDIR/${SAMPLE}_R2.unpaired.fastq.gz"   ILLUMINACLIP:${ADAPTERS}:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:20 MINLEN:50
-```
-
-2) Index reference once
-```bash
-mkdir -p refs/index
-cp "$REF" refs/index/ref.fasta
-bwa index refs/index/ref.fasta
-samtools faidx refs/index/ref.fasta
-picard CreateSequenceDictionary R=refs/index/ref.fasta O=refs/index/ref.dict
-```
-
-3) Alignment, sorting, duplicate marking
-```bash
-bwa mem -t 4 refs/index/ref.fasta   "$OUTDIR/${SAMPLE}_R1.trim.fastq.gz" "$OUTDIR/${SAMPLE}_R2.trim.fastq.gz"   | samtools sort -o "$OUTDIR/${SAMPLE}.sorted.bam"
-
-picard MarkDuplicates I="$OUTDIR/${SAMPLE}.sorted.bam" O="$OUTDIR/${SAMPLE}.dedup.bam" M="$OUTDIR/${SAMPLE}.dupmetrics.txt" REMOVE_DUPLICATES=true
-samtools index "$OUTDIR/${SAMPLE}.dedup.bam"
-```
-
-4) Depth based mask and consensus creation
-```bash
-# Depth
-samtools depth -a "$OUTDIR/${SAMPLE}.dedup.bam" > "$OUTDIR/${SAMPLE}.depth.txt"
-
-# Positions with coverage < MIN_DEPTH masked to N
-awk -v min="$MIN_DEPTH" 'BEGIN{OFS="\t"} {if($3<min) print $1,$2-1,$2}' "$OUTDIR/${SAMPLE}.depth.txt" > "$OUTDIR/${SAMPLE}.mask.bed"
-
-# Variant calling
-bcftools mpileup -f refs/index/ref.fasta -Q "$MIN_QUAL" -Ou "$OUTDIR/${SAMPLE}.dedup.bam"   | bcftools call -mv -Oz -o "$OUTDIR/${SAMPLE}.vcf.gz"
-bcftools index "$OUTDIR/${SAMPLE}.vcf.gz"
-
-# Consensus with masked low depth
-cat refs/index/ref.fasta   | bcftools consensus -m "$OUTDIR/${SAMPLE}.mask.bed" -f - "$OUTDIR/${SAMPLE}.vcf.gz"   > "$OUTDIR/${SAMPLE}.consensus.fasta"
-```
-
-Outputs
-- Consensus FASTA: `results/<sample>/<sample>.consensus.fasta`
-- BAM plus QC: `results/<sample>/*.bam, *.dupmetrics.txt, *.depth.txt`
-- VCF: `results/<sample>/<sample>.vcf.gz`
-
-## Annotation with Nextclade
-You can do this manually in the web app or via CLI.
-
-### Web workflow
-1. Open https://clades.nextstrain.org.
-2. Choose an RSV dataset that matches your subtype.
-   - RSV A dataset for A samples.
-   - RSV B dataset for B samples.
-3. Upload your `*.consensus.fasta` files.
-4. Review clade and genotype assignment, QC, and mutation calls.
-5. Export CSV and aligned FASTA for your records.
-
-### CLI workflow
-```bash
-# Get datasets
-nextclade dataset get --name rsv-a --output-dir datasets/rsv-a
-nextclade dataset get --name rsv-b --output-dir datasets/rsv-b
-
-# Run on your consensus
-nextclade run --input-dataset datasets/rsv-a --output-all results/nextclade/a results/consensus_rsv_a.fasta
-nextclade run --input-dataset datasets/rsv-b --output-all results/nextclade/b results/consensus_rsv_b.fasta
-```
-
-## Context sequences and tree building
-Follow the manuscript criteria to curate context sequences and then build a maximum likelihood tree with your samples plus context.
-
-### Manual BLAST to collect context
-1. Go to https://blast.ncbi.nlm.nih.gov and select **nucleotide BLAST**.
-2. Upload your consensus FASTA.
-3. Database: **nt**. Program selection: **Highly similar sequences (megablast)**.
-4. Organism filter: for RSV-A use **Human orthopneumovirus A**. For RSV-B use **Human orthopneumovirus B**.
-5. Increase **Max target sequences** to a generous number like 1000.
-6. Run BLAST and sort by percent identity and date. Download FASTA for a reasonable set of close matches.
-7. Apply manuscript-like filters before finalizing the context set:
-   - Remove sequences with more than 2 percent ambiguous bases (Ns).
-   - Remove nearly identical duplicates from the same place and time window.
-   - Prefer complete or near complete genomes and contemporary sampling windows relevant to your data.
-8. Save the curated context FASTA as `results/context/context_curated.fasta`.
-
-### Align and build the tree
-```bash
-# Combine your sample consensuses and curated context
-cat results/*/*.consensus.fasta > results/consensus/all_consensus.fasta
-cat results/consensus/all_consensus.fasta results/context/context_curated.fasta > results/aln/combined.fasta
-
-# MAFFT alignment
-mkdir -p results/aln
-mafft --auto results/aln/combined.fasta > results/aln/combined.aln.fasta
-
-# IQ-TREE with GTR+G model and 1000 ultrafast bootstraps
-mkdir -p results/iqtree
-iqtree2 -s results/aln/combined.aln.fasta -m GTR+G -bb 1000 -nt AUTO -pre results/iqtree/rsv_tree
-
-# Outputs
-# - results/iqtree/rsv_tree.treefile
-# - results/iqtree/rsv_tree.iqtree
-# - results/iqtree/rsv_tree.log
-```
-
-### Optional visualization
-- Load `results/iqtree/rsv_tree.treefile` in FigTree or iTOL.
-- Color samples by subtype or location for clarity.
-
-## Mutational analysis for G and F
-Generate amino acid differences vs the appropriate reference to replicate the manuscript style tables.
-
-```bash
-# RSV-A
-python analysis/scripts/mutations.py --subtype A --genomes results/consensus/all_consensus.fasta --out_tsv results/mutations_rsv_a.tsv
-# RSV-B
-python analysis/scripts/mutations.py --subtype B --genomes results/consensus/all_consensus.fasta --out_tsv results/mutations_rsv_b.tsv
-```
-
-The scripts translate G and F coding regions, compare to the reference for the subtype, and export a TSV with nonsynonymous changes.
-
-## Outputs checklist
-- results/<sample>/<sample>.consensus.fasta
-- results/consensus/all_consensus.fasta
-- results/context/context_curated.fasta
-- results/aln/combined.aln.fasta
-- results/iqtree/rsv_tree.treefile and associated files
-- results/mutations_rsv_*.tsv
-
 ## Configuration
-Edit `config/config.yaml` for batch runs. Example:
+Edit config/config.yaml. Example:
 ```yaml
 pairs:
   - sample: RSV_A_001
@@ -199,35 +90,107 @@ pairs:
     r2: data-private/RSV_B_001_R2.fastq.gz
 
 ref_accessions:
-  A: NC_038235.1
-  B: NC_001781.1
+  A: NC_038235.1   # RSV-A reference
+  B: NC_001781.1   # RSV-B reference
+
+tree_refs_acc:
+  - OP890340.1
+  - OR143212.1
+  - OQ024128.1
 
 params:
   threads: 4
+  trim_adapters: env/TruSeq3-PE.fa
   min_depth_consensus: 10
   min_qual: 20
-  iqtree_model: GTR+G
+  iqtree_model: GTR+G    # or MFP for ModelFinder auto selection
   bootstrap: 1000
 ```
 
-## How to cite
-- Cite the manuscript: DOI 10.1007/s00705-024-06036-0
-- Cite the tools you used in your analysis pipeline.
-
-## Automated pipeline with Snakemake
-
-- Place your FASTQs in `fastq/` using the pattern `<sample>_R1.fastq.gz` and `<sample>_R2.fastq.gz`.
-- Place your reference FASTA files in `refs/` as `RSV_A.fasta` and `RSV_B.fasta` or change the paths in `config/config.yaml`.
-- Choose how to assign references to samples in `config/config.yaml`:
-  - `single`: all samples use one subtype.
-  - `auto`: infer subtype from tokens in the sample name.
-  - `map`: explicit sample to subtype mapping in `config/samples.tsv`.
-
-### Run
+You can override parameters at runtime if needed:
 ```bash
-conda env create -f env/environment.yml
-conda activate rsv-env
-snakemake -s workflow/Snakefile -c 4 --configfile config/config.yaml --printshellcmds
+snakemake -s workflow/Snakefile -c 4 --config params:iqtree_model=MFP params:bootstrap=1000
 ```
 
-Outputs will be in `results/`. If you set `tree.context_fasta`, MAFFT and IQ-TREE will also run automatically to build a tree.
+## Reference-based assembly and consensus details
+Per sample:
+1) 2) Trim adapters with Trimmomatic.
+3) bwa mem mapping, samtools sort.
+4) Picard MarkDuplicates then samtools index.
+5) Depth and mask bed: positions with depth below min_depth_consensus are masked to N.
+6) bcftools mpileup and bcftools call, then bcftools consensus with the mask to produce a high-quality consensus.
+
+Primary deliverable: results/consensus/<sample>.fa
+
+## De novo assembly and contig QC
+**SPAdes and contig QC**
+```bash
+spades.py -1 results/<sample>_R1.trim.fastq.gz -2 results/<sample>_R2.trim.fastq.gz -o results/spades/<sample>
+python analysis/scripts/contig_qc.py --in results/spades/<sample>/contigs.fasta --out_tsv results/spades/<sample>/contigs.qc.tsv
+# Inspect the .summary.txt. Expect one principal contig near 15200 bases.
+```
+
+**Closest matches and context set**
+```bash
+python analysis/scripts/blast_closest.py --in results/spades/<sample>/contigs.fasta --out_tsv results/blast/<sample>.nt.tsv --max_hits 100
+cut -f2 results/blast/<sample>.nt.tsv | head -n 50 > config/refs.txt
+```
+
+**Alignment and phylogeny**
+```bash
+mafft --auto results/refs.fasta > results/aln/context.fasta
+iqtree -s results/aln/context.fasta -m GTR+G -bb 1000 -nt 4 -pre results/iqtree/context
+```
+
+## Clade and genotype assignment
+```bash
+nextclade dataset get --name rsv-a --output-dir datasets/rsv-a
+nextclade dataset get --name rsv-b --output-dir datasets/rsv-b
+
+# Run on your consensus
+nextclade run --input-dataset datasets/rsv-a --output-all results/nextclade/a results/consensus_rsv_a.fasta
+nextclade run --input-dataset datasets/rsv-b --output-all results/nextclade/b results/consensus_rsv_b.fasta
+```
+
+## Mutational analysis in G and F
+Report amino acid differences vs the appropriate reference.
+```bash
+# RSV-A
+python analysis/scripts/mutations.py --subtype A --genomes results/consensus_rsv_a.fasta --out_tsv results/mutations_rsv_a.tsv
+# RSV-B
+python analysis/scripts/mutations.py --subtype B --genomes results/consensus_rsv_b.fasta --out_tsv results/mutations_rsv_b.tsv
+```
+
+## Outputs checklist
+- results/consensus/<sample>.fa and results/consensus/all_consensus.fasta
+- results/aln/consensus_alignment.fasta
+- results/iqtree/consensus.treefile and associated IQ-TREE files
+- results/spades/<sample>/contigs.qc.tsv and .summary.txt if you run the de novo path
+- results/mutations_rsv_*.tsv for G and F differences
+
+## Project layout
+```
+analysis/           scripts
+config/             configuration
+env/                environment files
+workflow/           Snakemake workflow
+data-example/       example dataset for quick verification
+results-example/    example outputs after quick verification
+docs/               SOP and notes
+.github/workflows/  CI
+```
+
+## Data access and compliance
+- Do not upload raw reads or restricted data.
+- GISAID terms apply for sequences obtained through GISAID.
+
+## Methods and tool references
+- FastQC v0.11.9, Trimmomatic v0.39, Picard MarkDuplicates, SPAdes v3.15.5, BWA, MAFFT, IQ-TREE with GTR+G and 1000 bootstraps, Nextclade CLI.
+- SPAdes: Bankevich A et al., J Comput Biol 2012, 19(5):455-477.
+- Geneious: Kearse M et al., Bioinformatics 2012, 28(12):1647-1649.
+- RSV genotype definition: Goya S et al., Influenza Other Respir Viruses 2020, 14(3):274-285.
+- IQ-TREE: Nguyen LT et al., Mol Biol Evol 2015, 32(1):268-274.
+
+## How to cite
+- Cite the paper using the DOI above.
+- Cite this repository. CITATION.cff is included so GitHub can display the cite box.
