@@ -1,6 +1,6 @@
 # Genomic characterization of human respiratory syncytial virus circulating in Islamabad, Pakistan, during an outbreak in 2022 to 2023
 
-Reproducible workflow that mirrors the analysis in the study, with an explicit Short read workflow short read pipeline and clear manual steps for annotation and tree building.
+Reproducible workflow that mirrors the analysis in the study, with an explicit CoVpipe2-inspired short read pipeline and clear manual steps for annotation and tree building.
 
 DOI: https://doi.org/10.1007/s00705-024-06036-0
 
@@ -8,18 +8,12 @@ DOI: https://doi.org/10.1007/s00705-024-06036-0
 End to end analysis for RSV-A and RSV-B. Steps are automated where useful and documented for manual replication when a GUI is simpler or when external resources are required.
 
 ## Wet lab and sequencing context
+- Input: throat or nasopharyngeal swabs collected in VTM from RSV positive patients.
+- Library prep: Nextera DNA Flex or Nextera XT. Follow vendor instructions for dual indexed libraries.
+- Platform: Illumina MiSeq, 2x150 bp. Use a run configuration that yields enough depth per sample for whole genome consensus. The original study used MiSeq and short paired end reads; 2x150 works well in this pipeline.
 
-This section reflects the study methods.
-
-- Sample type: throat or nasopharyngeal swabs collected in viral transport medium
-- Storage and processing: stored at 4°C and processed for whole genome sequencing within 24 hours
-- RNA extraction: MagMAX Viral or Pathogen Nucleic Acid Isolation Kit on a KingFisher Flex Purification System
-- Library preparation and enrichment: Illumina RNA prep with Respiratory Virus Oligo Panel v2 RVOP2
-- Sequencing platform: Illumina MiSeq using a MiSeq Reagent Kit v3 with 150 cycles producing paired end 2x74 bp reads
-
-
-## Short read workflow short read path
-Minimal, explicit path that mirrors workflow style. This is the reference based consensus path for each sample.
+## CoVpipe2-inspired short read path
+Minimal, explicit path that mirrors CoVpipe2 style. This is the reference based consensus path for each sample.
 
 Trimmomatic -> Picard MarkDuplicates -> BWA-MEM alignment to reference -> samtools sort and index -> bcftools mpileup and call -> masked consensus
 
@@ -37,6 +31,7 @@ Trimmomatic -> Picard MarkDuplicates -> BWA-MEM alignment to reference -> samtoo
 
 ### Quick start one command
 ```bash
+export NCBI_EMAIL="you@example.com"
 conda env create -f env/environment.yml
 conda activate rsv-env
 snakemake -s workflow/Snakefile -c 4 --printshellcmds
@@ -50,7 +45,10 @@ SUBTYPE="A"     # A or B
 R1="data-private/${SAMPLE}_R1.fastq.gz"
 R2="data-private/${SAMPLE}_R2.fastq.gz"
 
-# Adapter file for nv/nce by subtype
+# Adapter file for Nextera
+ADAPTERS="env/NexteraPE-PE.fa"
+
+# Reference by subtype
 REF_A="refs/NC_038235.1.fasta"
 REF_B="refs/NC_001781.1.fasta"
 REF=$( [ "$SUBTYPE" = "A" ] && echo "$REF_A" || echo "$REF_B" )
