@@ -9,6 +9,23 @@ Published paper: Genomic characterization of human respiratory syncytial virus c
 
 Current software release: 0.1.0.
 
+## Workflow overview
+
+This repository documents the RSV-A and RSV-B analysis path from short-read sequencing data to subtype-aware consensus genomes, Nextclade annotation, curated context trees, and G/F mutation summaries.
+
+```mermaid
+flowchart LR
+  A["RSV-A/RSV-B paired FASTQ"] --> B["QC and trimming"]
+  B --> C["Reference mapping"]
+  C --> D["Duplicate handling"]
+  D --> E["Depth mask and consensus"]
+  E --> F["Nextclade annotation"]
+  E --> G["Context sequence curation"]
+  G --> H["MAFFT alignment"]
+  H --> I["IQ-TREE phylogeny"]
+  E --> J["G and F mutation summaries"]
+```
+
 ## Program summary
 End to end analysis for RSV-A and RSV-B. Steps are automated where useful and documented for manual replication when a GUI is simpler or when external resources are required.
 
@@ -23,7 +40,7 @@ This section reflects the study methods.
 - Sequencing platform: Illumina MiSeq using a MiSeq Reagent Kit v3 with 150 cycles producing paired end 2x74 bp reads
 
 
-## Short read workflow short read path
+## Short-read workflow
 Minimal, explicit path that mirrors workflow style. This is the reference based consensus path for each sample.
 
 Trimmomatic -> Picard MarkDuplicates -> BWA-MEM alignment to reference -> samtools sort and index -> bcftools mpileup and call -> masked consensus
@@ -222,7 +239,7 @@ params:
 
 ## How to cite
 - Cite the manuscript: DOI 10.1007/s00705-024-06036-0
-- Software: Haider SA. RSV Islamabad 2022 to 2023 analysis pipeline. Version 0.1.0. Zenodo. https://doi.org/10.5281/zenodo.20257745
+- Software: Haider SA. RSV Outbreak Genomics Workflow, Islamabad 2022-2023. Version 0.1.0. Zenodo. https://doi.org/10.5281/zenodo.20257745
 - All-version software DOI: https://doi.org/10.5281/zenodo.20257744
 - Cite the tools you used in your analysis pipeline.
 
