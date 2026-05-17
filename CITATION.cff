@@ -17,6 +17,7 @@ authors:
   - family-names: "Umair"
     given-names: "Massab"
 repository-code: "https://github.com/adnanhaider81/rsv-islamabad-2022-2023-pipeline"
+doi: "10.5281/zenodo.20257745"
 identifiers:
   - type: doi
     value: 10.1007/s00705-024-06036-0
