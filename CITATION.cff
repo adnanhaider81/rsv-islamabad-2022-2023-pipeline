@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-title: "RSV Islamabad 2022 to 2023 analysis pipeline"
+title: "RSV Outbreak Genomics Workflow, Islamabad 2022-2023"
 message: "If you use this pipeline, please cite the paper and this repository."
 type: software
 version: "0.1.0"

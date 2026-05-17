@@ -1,11 +1,11 @@
-# Genomic characterization of human respiratory syncytial virus circulating in Islamabad, Pakistan, during an outbreak in 2022 to 2023
+# RSV Outbreak Genomics Workflow, Islamabad 2022-2023
 
 [![DOI](https://zenodo.org/badge/1068024511.svg)](https://zenodo.org/badge/latestdoi/1068024511)
 [![Smoke test](https://github.com/adnanhaider81/rsv-islamabad-2022-2023-pipeline/actions/workflows/smoke-test.yml/badge.svg)](https://github.com/adnanhaider81/rsv-islamabad-2022-2023-pipeline/actions/workflows/smoke-test.yml)
 
-Reproducible workflow that mirrors the analysis in the study, with an explicit Short read workflow short read pipeline and clear manual steps for annotation and tree building.
+Reproducible workflow that mirrors the analysis in the study, with an explicit short-read pipeline and clear manual steps for annotation and tree building.
 
-Paper DOI: https://doi.org/10.1007/s00705-024-06036-0
+Published paper: Genomic characterization of human respiratory syncytial virus circulating in Islamabad, Pakistan, during an outbreak in 2022 to 2023. Archives of Virology. 2024. https://doi.org/10.1007/s00705-024-06036-0
 
 Current software release: 0.1.0.
 
