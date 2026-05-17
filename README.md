@@ -1,8 +1,12 @@
 # Genomic characterization of human respiratory syncytial virus circulating in Islamabad, Pakistan, during an outbreak in 2022 to 2023
 
+[![Smoke test](https://github.com/adnanhaider81/rsv-islamabad-2022-2023-pipeline/actions/workflows/smoke-test.yml/badge.svg)](https://github.com/adnanhaider81/rsv-islamabad-2022-2023-pipeline/actions/workflows/smoke-test.yml)
+
 Reproducible workflow that mirrors the analysis in the study, with an explicit Short read workflow short read pipeline and clear manual steps for annotation and tree building.
 
-DOI: https://doi.org/10.1007/s00705-024-06036-0
+Paper DOI: https://doi.org/10.1007/s00705-024-06036-0
+
+Current software release: 0.1.0.
 
 ## Program summary
 End to end analysis for RSV-A and RSV-B. Steps are automated where useful and documented for manual replication when a GUI is simpler or when external resources are required.

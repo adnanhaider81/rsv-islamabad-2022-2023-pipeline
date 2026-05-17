@@ -1,0 +1,17 @@
+.git/
+.github/
+.snakemake/
+.venv/
+__pycache__/
+*.pyc
+data-private/
+fastq/
+logs/
+results/
+work/
+*.fastq
+*.fastq.gz
+*.bam
+*.bai
+*.vcf
+*.zip

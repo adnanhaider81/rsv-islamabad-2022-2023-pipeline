@@ -2,6 +2,9 @@ cff-version: 1.2.0
 title: "RSV Islamabad 2022 to 2023 analysis pipeline"
 message: "If you use this pipeline, please cite the paper and this repository."
 type: software
+version: "0.1.0"
+date-released: "2026-05-17"
+abstract: "A reproducible workflow for RSV-A and RSV-B analysis from the Islamabad 2022 to 2023 outbreak, covering reference-based consensus generation, context phylogeny, and G/F mutation summaries with bundled public test fixtures."
 authors:
   - family-names: "Haider"
     given-names: "Syed Adnan"
@@ -13,7 +16,7 @@ authors:
     given-names: "Muhammad"
   - family-names: "Umair"
     given-names: "Massab"
-repository-code: "https://github.com/your-org/your-repo"
+repository-code: "https://github.com/adnanhaider81/rsv-islamabad-2022-2023-pipeline"
 identifiers:
   - type: doi
     value: 10.1007/s00705-024-06036-0

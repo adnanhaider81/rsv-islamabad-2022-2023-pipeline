@@ -1,0 +1,39 @@
+name: Smoke test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate bundled test fixtures
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyyaml
+          python -m py_compile analysis/scripts/fetch_genbank.py tests/check_outputs.py
+          python - <<'PY'
+          import gzip
+          import pathlib
+          import yaml
+
+          cfg = yaml.safe_load(pathlib.Path("tests/config_test.yaml").read_text())
+          assert pathlib.Path(cfg["fastq_dir"]).exists()
+          for rel in [
+              "tests/data/fastq/TestA_01_R1.fastq.gz",
+              "tests/data/fastq/TestA_01_R2.fastq.gz",
+              "tests/data/refs/test_A.fasta",
+              "tests/data/refs/test_B.fasta",
+          ]:
+              path = pathlib.Path(rel)
+              assert path.exists(), rel
+              if path.suffix == ".gz":
+                  with gzip.open(path, "rt") as handle:
+                      assert handle.readline().startswith("@")
+          print("RSV test fixtures OK")
+          PY
