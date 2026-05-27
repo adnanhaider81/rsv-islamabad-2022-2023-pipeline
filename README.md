@@ -237,6 +237,10 @@ params:
   bootstrap: 1000
 ```
 
+## Data governance
+
+See [DATA_GOVERNANCE.md](DATA_GOVERNANCE.md) for public-data, restricted-data, and sample-identifier handling rules.
+
 ## How to cite
 - Cite the manuscript: DOI 10.1007/s00705-024-06036-0
 - Software: Haider SA. RSV Outbreak Genomics Workflow, Islamabad 2022-2023. Version 0.1.0. Zenodo. https://doi.org/10.5281/zenodo.20257745
